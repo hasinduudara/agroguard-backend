@@ -1,0 +1,24 @@
+# Core Server & API
+fastapi
+uvicorn
+python-multipart
+
+# Authentication (Supabase)
+supabase
+PyJWT
+
+# AI, Vision & LangChain
+langchain
+langchain-google-genai
+google-generativeai
+
+# Vector DB & Document Parsing
+chromadb
+PyPDF2
+
+# Caching & Web Search
+redis
+tavily-python
+
+# Environment Variables
+python-dotenv
