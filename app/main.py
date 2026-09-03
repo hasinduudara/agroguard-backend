@@ -7,6 +7,8 @@ from dotenv import load_dotenv
 # Load environment variables from the .env file
 load_dotenv()
 
+from app.api.routes_app import router as app_router
+
 # Initialize the FastAPI application
 app = FastAPI(title="AgroGuard AI API", version="1.0.0")
 
@@ -57,6 +59,8 @@ def verify_supabase_token(credentials: HTTPAuthorizationCredentials = Depends(se
 # ==========================================
 # API Routes
 # ==========================================
+
+app.include_router(app_router, prefix="/api/app", tags=["Mobile App"])
 
 @app.get("/")
 def root_endpoint():
