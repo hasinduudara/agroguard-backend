@@ -8,6 +8,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 from app.api.routes_app import router as app_router
+from app.api.routes_admin import router as admin_router
 
 # Initialize the FastAPI application
 app = FastAPI(title="AgroGuard AI API", version="1.0.0")
@@ -61,6 +62,7 @@ def verify_supabase_token(credentials: HTTPAuthorizationCredentials = Depends(se
 # ==========================================
 
 app.include_router(app_router, prefix="/api/app", tags=["Mobile App"])
+app.include_router(admin_router, prefix="/api/admin", tags=["Admin Panel"])
 
 @app.get("/")
 def root_endpoint():
