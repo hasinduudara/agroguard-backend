@@ -1,27 +1,24 @@
 import os
+import base64
 from fastapi import UploadFile, HTTPException, status
 from typing import List
 from dotenv import load_dotenv
-
-# Import the new google-genai package
-from google import genai
-from google.genai import types
+from groq import Groq
 
 # Load environment variables
 load_dotenv()
 
-# Configure the Gemini API Key
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
-if not GEMINI_API_KEY:
-    raise ValueError("GEMINI_API_KEY is not set in the environment variables.")
+GROQ_API_KEY = os.getenv("GROQ_API_KEY")
+if not GROQ_API_KEY:
+    raise ValueError("GROQ_API_KEY is not set in the environment variables.")
 
-# Initialize the new Gemini Client
-client = genai.Client(api_key=GEMINI_API_KEY)
+# Initialize the Groq client
+client = Groq(api_key=GROQ_API_KEY)
 
 async def extract_symptoms_from_images(images: List[UploadFile]) -> str:
     """
-    Takes a list of uploaded images, sends them to Gemini Vision using the new SDK,
-    and returns a textual description of the crop symptoms.
+    Takes a list of uploaded images, encodes them to base64, 
+    and sends them to Groq's Qwen Vision model to extract crop symptoms.
     """
     prompt = """
     You are an expert agricultural AI. 
@@ -31,30 +28,44 @@ async def extract_symptoms_from_images(images: List[UploadFile]) -> str:
     If the plant looks healthy, state that it looks healthy.
     """
     
-    # Add the text prompt to the contents list first
-    contents = [prompt]
+    # Initialize the content array with the text prompt
+    content = [{"type": "text", "text": prompt}]
     
     try:
-        # Read each uploaded image and format it for the new Gemini SDK
         for img in images:
+            # Read the image bytes and encode to base64
             img_bytes = await img.read()
-            contents.append(
-                types.Part.from_bytes(
-                    data=img_bytes,
-                    mime_type=img.content_type or "image/jpeg",
-                )
-            )
-            # Reset the file pointer so it can be read again if needed
+            base64_image = base64.b64encode(img_bytes).decode('utf-8')
+            mime_type = img.content_type or "image/jpeg"
+            
+            # Construct the data URL required by Groq Vision
+            image_url = f"data:{mime_type};base64,{base64_image}"
+            
+            # Append the image to the content array
+            content.append({
+                "type": "image_url",
+                "image_url": {"url": image_url}
+            })
+            
+            # Reset file pointer
             await img.seek(0)
             
-        # Use the recommended Chat API with the latest gemini-3.6-flash model
-        chat = client.chats.create(model="gemini-3.6-flash")
-        response = chat.send_message(contents)
+        # Call the Groq Vision API using the latest supported Qwen model
+        chat_completion = client.chat.completions.create(
+            messages=[
+                {
+                    "role": "user",
+                    "content": content
+                }
+            ],
+            model="qwen/qwen3.6-27b",
+            temperature=0.2
+        )
         
-        return response.text
+        return chat_completion.choices[0].message.content
         
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error analyzing images with AI: {str(e)}"
+            detail=f"Error analyzing images with Groq AI: {str(e)}"
         )
