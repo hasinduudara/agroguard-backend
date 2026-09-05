@@ -23,10 +23,15 @@ embeddings = GoogleGenerativeAIEmbeddings(
     model="models/gemini-embedding-001"
 )
 
-# Initialize the Groq Chat model for generating the final answer
-# Using the latest supported fast model (llama-3.1-8b-instant) to avoid deprecation issues
+# Groq model is configurable via env var so future deprecations don't require
+# a code change — just update GROQ_MODEL and redeploy.
+# "llama3-8b-8192" has been decommissioned by Groq; replaced with
+# "openai/gpt-oss-20b" (Groq's recommended production replacement for that tier).
+GROQ_MODEL = os.getenv("GROQ_MODEL", "openai/gpt-oss-20b")
+
+# Initialize the Groq Chat model
 llm = ChatGroq(
-    model="llama-3.1-8b-instant", 
+    model=GROQ_MODEL,
     api_key=os.getenv("GROQ_API_KEY"),
     temperature=0.3
 )
@@ -104,7 +109,7 @@ async def get_crop_advice(user_query: str, ai_symptoms: str = None) -> str:
         prompt_template = PromptTemplate(
             input_variables=["context", "symptoms", "query"],
             template="""
-            You are a highly knowledgeable Agricultural Advisor. 
+            You are a highly knowledgeable Agricultural Advisor helping Sri Lankan farmers. 
             Use the following context extracted from official agricultural documents to answer the user's question.
             
             Context from documents:
@@ -121,6 +126,7 @@ async def get_crop_advice(user_query: str, ai_symptoms: str = None) -> str:
             2. Identify the possible disease/issue and recommend specific treatments or fertilizers mentioned in the context.
             3. If the context does not contain the answer, clearly state that you do not have enough information based on the official guidelines, but provide general safe advice if possible.
             4. Keep the answer structured and easy to read.
+            5. IMPORTANT: You MUST write the final response entirely in Sinhala language (using Sinhala script, not English).
             """
         )
         

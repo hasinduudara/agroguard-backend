@@ -1,8 +1,9 @@
 from fastapi import APIRouter, File, UploadFile, Form, HTTPException, status
 from typing import List, Optional
 
-# Import the vision_service here
+# Import both the vision service and the new RAG service
 from app.services.vision_service import extract_symptoms_from_images
+from app.services.rag_service import get_crop_advice
 
 # Create a router object for the mobile app endpoints
 router = APIRouter()
@@ -14,7 +15,7 @@ async def analyze_crop(
 ):
     """
     Endpoint to receive up to 3 images and an optional text query.
-    Extracts symptoms using Gemini Vision AI if images are provided.
+    Extracts symptoms using Groq Vision AI and generates final advice using RAG.
     """
     
     image_names = []
@@ -29,7 +30,7 @@ async def analyze_crop(
             )
         image_names = [img.filename for img in images if img.filename]
         
-        # Extract symptoms from images using Gemini Vision API
+        # Extract symptoms from images using Groq Vision API
         try:
             ai_symptoms = await extract_symptoms_from_images(images)
         except Exception as e:
@@ -45,11 +46,24 @@ async def analyze_crop(
             detail="Please provide at least a text query or an image."
         )
 
-    # 3. Send the response with the AI result
+    # 3. Retrieve advice from ChromaDB and generate the answer using Groq LLM
+    try:
+        final_advice = await get_crop_advice(
+            user_query=text_query, 
+            ai_symptoms=ai_symptoms
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to retrieve advice from knowledge base: {str(e)}"
+        )
+
+    # 4. Send the response with both the symptoms and the final RAG advice
     return {
         "status": "success",
         "message": "Crop analyzed successfully.",
         "received_text": text_query,
-        "extracted_symptoms": ai_symptoms,  # Symptoms provided by Gemini AI
+        "extracted_symptoms": ai_symptoms,
+        "final_advice": final_advice,
         "image_count": len(image_names)
     }
