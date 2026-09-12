@@ -85,29 +85,30 @@ async def process_and_store_pdf(file: UploadFile):
         if os.path.exists(temp_file_path):
             os.remove(temp_file_path)
 
-async def get_crop_advice(user_query: str, ai_symptoms: str = None) -> str:
+async def get_crop_advice(user_query: str, ai_symptoms: str = None, language: str = "si") -> str:
     """
     Searches the ChromaDB vector store for relevant agricultural data 
-    based on the user's query and the symptoms identified by the vision AI.
-    Generates a final answer using Groq LLM.
+    and generates a final answer using Groq LLM based on the requested language.
     """
     try:
-        # 1. Load the existing vector database
         db = Chroma(
             persist_directory=CHROMA_PATH, 
             embedding_function=embeddings
         )
         
-        # 2. Search for the top 3 most relevant document chunks
         search_query = f"{user_query or ''} {ai_symptoms or ''}".strip()
         matching_docs = db.similarity_search(search_query, k=3)
-        
-        # Combine the retrieved texts
         context = "\n\n".join([doc.page_content for doc in matching_docs])
         
-        # 3. Define the prompt template for the AI
+        # Determine output language instruction dynamically
+        lang_instruction = (
+            "5. IMPORTANT: You MUST write the final response entirely in Sinhala language (using Sinhala script, not English)."
+            if language == "si" 
+            else "5. IMPORTANT: You MUST write the final response entirely in English."
+        )
+        
         prompt_template = PromptTemplate(
-            input_variables=["context", "symptoms", "query"],
+            input_variables=["context", "symptoms", "query", "lang_instruction"],
             template="""
             You are a highly knowledgeable Agricultural Advisor helping Sri Lankan farmers. 
             Use the following context extracted from official agricultural documents to answer the user's question.
@@ -126,15 +127,15 @@ async def get_crop_advice(user_query: str, ai_symptoms: str = None) -> str:
             2. Identify the possible disease/issue and recommend specific treatments or fertilizers mentioned in the context.
             3. If the context does not contain the answer, clearly state that you do not have enough information based on the official guidelines, but provide general safe advice if possible.
             4. Keep the answer structured and easy to read.
-            5. IMPORTANT: You MUST write the final response entirely in Sinhala language (using Sinhala script, not English).
+            {lang_instruction}
             """
         )
         
-        # 4. Generate the final response
         final_prompt = prompt_template.format(
             context=context,
             symptoms=ai_symptoms if ai_symptoms else "None provided",
-            query=user_query if user_query else "What is the issue with this crop and how to treat it?"
+            query=user_query if user_query else "What is the issue with this crop and how to treat it?",
+            lang_instruction=lang_instruction
         )
         
         response = llm.invoke(final_prompt)
