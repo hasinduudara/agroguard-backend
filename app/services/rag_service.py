@@ -27,12 +27,12 @@ embeddings = GoogleGenerativeAIEmbeddings(
 # a code change — just update GROQ_MODEL and redeploy.
 GROQ_MODEL = os.getenv("GROQ_MODEL", "openai/gpt-oss-20b")
 
-# Initialize the Groq Chat model with max_tokens limit
+# Initialize the Groq Chat model with increased temperature to prevent repetition loops
 llm = ChatGroq(
     model=GROQ_MODEL,
     api_key=os.getenv("GROQ_API_KEY"),
-    temperature=0.3,
-    max_tokens=800 # Added this limit to prevent 429 errors from Groq
+    temperature=0.5, # Increased from 0.3 to 0.5 for more natural language generation
+    max_tokens=800 
 )
 
 # Define the directory where ChromaDB will store the vector data locally
@@ -124,8 +124,9 @@ async def get_crop_advice(user_query: str, ai_symptoms: str = None, language: st
             Instructions:
             1. Analyze the symptoms and the query based ONLY on the provided context.
             2. Identify the possible disease/issue and recommend specific treatments or fertilizers mentioned in the context.
-            3. If the context does not contain the answer, clearly state that you do not have enough information based on the official guidelines, but provide general safe advice if possible.
-            4. Keep the answer structured and easy to read.
+            3. If the context does not contain the answer, clearly state that you do not have enough information.
+            4. Keep the answer structured, concise, and easy to read using Markdown tables or lists.
+            5. CRITICAL: DO NOT repeat the same words or phrases endlessly. Write natural, fluent, and meaningful sentences. Break out of any repetitive loops.
             {lang_instruction}
             """
         )
