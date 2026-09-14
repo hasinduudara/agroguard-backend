@@ -8,60 +8,52 @@ from langchain_chroma import Chroma
 from dotenv import load_dotenv
 from langchain_groq import ChatGroq
 from langchain_core.prompts import PromptTemplate
+from langchain_community.tools import DuckDuckGoSearchRun
 
 # Load environment variables
 load_dotenv()
 
-# Ensure API keys are available
 if not os.getenv("GEMINI_API_KEY"):
     raise ValueError("GEMINI_API_KEY is not set in the environment variables.")
 if not os.getenv("GROQ_API_KEY"):
     raise ValueError("GROQ_API_KEY is not set in the environment variables.")
 
-# Initialize Google Embeddings (Using the embedding-001 model for ChromaDB)
+# Initialize Google Embeddings
 embeddings = GoogleGenerativeAIEmbeddings(
     model="models/gemini-embedding-001"
 )
 
-# Groq model is configurable via env var so future deprecations don't require
-# a code change — just update GROQ_MODEL and redeploy.
 GROQ_MODEL = os.getenv("GROQ_MODEL", "openai/gpt-oss-20b")
 
-# Initialize the Groq Chat model with increased temperature to prevent repetition loops
+# Initialize the Groq Chat model
 llm = ChatGroq(
     model=GROQ_MODEL,
     api_key=os.getenv("GROQ_API_KEY"),
-    temperature=0.5, # Increased from 0.3 to 0.5 for more natural language generation
+    temperature=0.5, 
     max_tokens=800 
 )
 
-# Define the directory where ChromaDB will store the vector data locally
+# Initialize the Web Search Tool
+web_search = DuckDuckGoSearchRun()
+
 CHROMA_PATH = "chroma_db"
 
 async def process_and_store_pdf(file: UploadFile):
-    """
-    Saves the uploaded PDF temporarily, extracts text, chunks it, 
-    and stores the vector embeddings in ChromaDB.
-    """
     temp_file_path = f"temp_{file.filename}"
     
     try:
-        # 1. Save the uploaded file temporarily to the local disk
         with open(temp_file_path, "wb") as buffer:
             shutil.copyfileobj(file.file, buffer)
         
-        # 2. Load and parse the PDF document using LangChain
         loader = PyPDFLoader(temp_file_path)
         documents = loader.load()
         
-        # 3. Split the text into smaller chunks for accurate retrieval
         text_splitter = RecursiveCharacterTextSplitter(
             chunk_size=1000,
             chunk_overlap=200
         )
         chunks = text_splitter.split_documents(documents)
         
-        # 4. Convert chunks to embeddings and store them in ChromaDB
         Chroma.from_documents(
             documents=chunks,
             embedding=embeddings,
@@ -80,15 +72,10 @@ async def process_and_store_pdf(file: UploadFile):
             detail=f"Error processing the PDF document: {str(e)}"
         )
     finally:
-        # 5. Clean up the temporary file from the server
         if os.path.exists(temp_file_path):
             os.remove(temp_file_path)
 
 async def get_crop_advice(user_query: str, ai_symptoms: str = None, language: str = "si") -> str:
-    """
-    Searches the ChromaDB vector store for relevant agricultural data 
-    and generates a final answer using Groq LLM based on the requested language.
-    """
     try:
         db = Chroma(
             persist_directory=CHROMA_PATH, 
@@ -96,10 +83,20 @@ async def get_crop_advice(user_query: str, ai_symptoms: str = None, language: st
         )
         
         search_query = f"{user_query or ''} {ai_symptoms or ''}".strip()
-        matching_docs = db.similarity_search(search_query, k=3)
-        context = "\n\n".join([doc.page_content for doc in matching_docs])
         
-        # Determine output language instruction dynamically
+        # 1. Search Local Vector Database (PDFs)
+        matching_docs = db.similarity_search(search_query, k=3)
+        local_context = "\n\n".join([doc.page_content for doc in matching_docs])
+        
+        # 2. Search the Internet (Fallback/Augmentation)
+        try:
+            web_context = web_search.invoke(search_query)
+        except Exception:
+            web_context = "No web information retrieved."
+
+        # Combine both contexts
+        combined_context = f"--- Official Database Context ---\n{local_context}\n\n--- Internet Search Context ---\n{web_context}"
+        
         lang_instruction = (
             "5. IMPORTANT: You MUST write the final response entirely in Sinhala language (using Sinhala script, not English)."
             if language == "si" 
@@ -110,9 +107,9 @@ async def get_crop_advice(user_query: str, ai_symptoms: str = None, language: st
             input_variables=["context", "symptoms", "query", "lang_instruction"],
             template="""
             You are a highly knowledgeable Agricultural Advisor helping Sri Lankan farmers. 
-            Use the following context extracted from official agricultural documents to answer the user's question.
+            Use the following context (which includes both local database info and recent internet data) to answer the user's question.
             
-            Context from documents:
+            Context:
             {context}
             
             Observed Plant Symptoms (from Image AI):
@@ -124,15 +121,15 @@ async def get_crop_advice(user_query: str, ai_symptoms: str = None, language: st
             Instructions:
             1. Analyze the symptoms and the query based ONLY on the provided context.
             2. Identify the possible disease/issue and recommend specific treatments or fertilizers mentioned in the context.
-            3. If the context does not contain the answer, clearly state that you do not have enough information.
+            3. Prioritize the 'Official Database Context' if there are conflicts. Use the 'Internet Search Context' to fill in gaps.
             4. Keep the answer structured, concise, and easy to read using Markdown tables or lists.
-            5. CRITICAL: DO NOT repeat the same words or phrases endlessly. Write natural, fluent, and meaningful sentences. Break out of any repetitive loops.
+            5. CRITICAL: DO NOT repeat the same words or phrases endlessly. Write natural, fluent, and meaningful sentences.
             {lang_instruction}
             """
         )
         
         final_prompt = prompt_template.format(
-            context=context,
+            context=combined_context,
             symptoms=ai_symptoms if ai_symptoms else "None provided",
             query=user_query if user_query else "What is the issue with this crop and how to treat it?",
             lang_instruction=lang_instruction
