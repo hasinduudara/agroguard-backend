@@ -25,15 +25,14 @@ embeddings = GoogleGenerativeAIEmbeddings(
 
 # Groq model is configurable via env var so future deprecations don't require
 # a code change — just update GROQ_MODEL and redeploy.
-# "llama3-8b-8192" has been decommissioned by Groq; replaced with
-# "openai/gpt-oss-20b" (Groq's recommended production replacement for that tier).
 GROQ_MODEL = os.getenv("GROQ_MODEL", "openai/gpt-oss-20b")
 
-# Initialize the Groq Chat model
+# Initialize the Groq Chat model with max_tokens limit
 llm = ChatGroq(
     model=GROQ_MODEL,
     api_key=os.getenv("GROQ_API_KEY"),
-    temperature=0.3
+    temperature=0.3,
+    max_tokens=800 # Added this limit to prevent 429 errors from Groq
 )
 
 # Define the directory where ChromaDB will store the vector data locally

@@ -54,7 +54,7 @@ async def extract_symptoms_from_images(images: List[UploadFile]) -> str:
             await img.seek(0)
             
         # Call the Groq Vision API using the latest supported Qwen model
-        # Increased max_completion_tokens to allow the model to finish its thought process
+        # Reduced max_completion_tokens to 800 to comply with Groq free tier limits
         chat_completion = client.chat.completions.create(
             messages=[
                 {
@@ -64,7 +64,7 @@ async def extract_symptoms_from_images(images: List[UploadFile]) -> str:
             ],
             model="qwen/qwen3.6-27b",
             temperature=0.2,
-            max_completion_tokens=2048 
+            max_completion_tokens=800 
         )
         
         raw_response = chat_completion.choices[0].message.content
