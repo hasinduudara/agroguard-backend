@@ -88,11 +88,31 @@ async def get_crop_advice(user_query: str, ai_symptoms: str = None, language: st
         matching_docs = db.similarity_search(search_query, k=3)
         local_context = "\n\n".join([doc.page_content for doc in matching_docs])
         
+        # Print Vector DB status to terminal
+        print("\n" + "="*50)
+        if matching_docs:
+            print(f"✅ [VECTOR DB] Found {len(matching_docs)} matching documents in local database.")
+        else:
+            print("⚠️ [VECTOR DB] No matching documents found in local database.")
+        print("="*50 + "\n")
+        
         # 2. Search the Internet (Fallback/Augmentation)
         try:
             web_context = web_search.invoke(search_query)
-        except Exception:
+            
+            # Print Web Search status to terminal
+            print("\n" + "="*50)
+            if web_context and web_context != "No good DuckDuckGo Search Result was found":
+                print(f"🌐 [WEB SEARCH] DuckDuckGo search successful. Retrieved {len(web_context)} characters.")
+            else:
+                print("⚠️ [WEB SEARCH] DuckDuckGo search returned no useful results.")
+            print("="*50 + "\n")
+            
+        except Exception as e:
             web_context = "No web information retrieved."
+            print("\n" + "="*50)
+            print(f"❌ [WEB SEARCH] Search failed: {str(e)}")
+            print("="*50 + "\n")
 
         # Combine both contexts
         combined_context = f"--- Official Database Context ---\n{local_context}\n\n--- Internet Search Context ---\n{web_context}"
@@ -119,11 +139,12 @@ async def get_crop_advice(user_query: str, ai_symptoms: str = None, language: st
             {query}
             
             Instructions:
-            1. Analyze the symptoms and the query based ONLY on the provided context.
-            2. Identify the possible disease/issue and recommend specific treatments or fertilizers mentioned in the context.
-            3. Prioritize the 'Official Database Context' if there are conflicts. Use the 'Internet Search Context' to fill in gaps.
-            4. Keep the answer structured, concise, and easy to read using Markdown tables or lists.
-            5. CRITICAL: DO NOT repeat the same words or phrases endlessly. Write natural, fluent, and meaningful sentences.
+            1. First, determine if your final answer relies mostly on the 'Official Database Context' or the 'Internet Search Context'.
+            2. Start your response with EXACTLY ONE of these lines to show the source:
+               - **මූලාශ්‍රය: අපගේ දත්ත ගබඩාව** (If you used the local database)
+               - **මූලාශ්‍රය: අන්තර්ජාලය** (If you used the internet search)
+            3. VERY IMPORTANT: Sinhala text consumes a huge amount of AI tokens. To prevent the response from cutting off, you MUST keep your answer EXTREMELY SHORT and concise.
+            4. Use only 2 to 4 very brief bullet points. DO NOT generate large tables or long paragraphs. 
             {lang_instruction}
             """
         )
