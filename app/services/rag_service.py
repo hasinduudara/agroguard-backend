@@ -1,5 +1,7 @@
 import os
 import shutil
+import hashlib
+import redis.asyncio as redis
 from fastapi import UploadFile, HTTPException, status
 from langchain_community.document_loaders import PyPDFLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
@@ -35,6 +37,10 @@ llm = ChatGroq(
 
 # Initialize the Web Search Tool
 web_search = DuckDuckGoSearchRun()
+
+# Initialize Async Redis Client
+REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379")
+redis_client = redis.from_url(REDIS_URL, decode_responses=True)
 
 CHROMA_PATH = "chroma_db"
 
@@ -77,6 +83,23 @@ async def process_and_store_pdf(file: UploadFile):
 
 async def get_crop_advice(user_query: str, ai_symptoms: str = None, language: str = "si") -> str:
     try:
+        # 1. Create a unique cache key based on the exact inputs
+        raw_key = f"{user_query}_{ai_symptoms}_{language}"
+        cache_key = f"agroadvice_{hashlib.md5(raw_key.encode()).hexdigest()}"
+        
+        # 2. Check if the answer already exists in Redis Cache
+        try:
+            cached_response = await redis_client.get(cache_key)
+            if cached_response:
+                print("\n" + "="*50)
+                print("⚡ [REDIS CACHE] Found matching response in cache. Skipping AI processing!")
+                print("="*50 + "\n")
+                return cached_response
+        except Exception as e:
+            print(f"⚠️ [REDIS ERROR] Cache check failed (Is Redis running?): {e}")
+
+        # --- CACHE MISS: Proceed with standard AI processing ---
+        
         db = Chroma(
             persist_directory=CHROMA_PATH, 
             embedding_function=embeddings
@@ -84,11 +107,10 @@ async def get_crop_advice(user_query: str, ai_symptoms: str = None, language: st
         
         search_query = f"{user_query or ''} {ai_symptoms or ''}".strip()
         
-        # 1. Search Local Vector Database (PDFs)
+        # Search Local Vector Database (PDFs)
         matching_docs = db.similarity_search(search_query, k=3)
         local_context = "\n\n".join([doc.page_content for doc in matching_docs])
         
-        # Print Vector DB status to terminal
         print("\n" + "="*50)
         if matching_docs:
             print(f"✅ [VECTOR DB] Found {len(matching_docs)} matching documents in local database.")
@@ -96,11 +118,10 @@ async def get_crop_advice(user_query: str, ai_symptoms: str = None, language: st
             print("⚠️ [VECTOR DB] No matching documents found in local database.")
         print("="*50 + "\n")
         
-        # 2. Search the Internet (Fallback/Augmentation)
+        # Search the Internet (Fallback)
         try:
             web_context = web_search.invoke(search_query)
             
-            # Print Web Search status to terminal
             print("\n" + "="*50)
             if web_context and web_context != "No good DuckDuckGo Search Result was found":
                 print(f"🌐 [WEB SEARCH] DuckDuckGo search successful. Retrieved {len(web_context)} characters.")
@@ -157,7 +178,16 @@ async def get_crop_advice(user_query: str, ai_symptoms: str = None, language: st
         )
         
         response = llm.invoke(final_prompt)
-        return response.content
+        final_answer = response.content
+
+        # 3. Save the newly generated answer to Redis for 24 hours (86400 seconds)
+        try:
+            await redis_client.set(cache_key, final_answer, ex=86400)
+            print("✅ [REDIS CACHE] New response successfully saved to cache.")
+        except Exception as e:
+            print(f"⚠️ [REDIS ERROR] Could not save response to cache: {e}")
+
+        return final_answer
         
     except Exception as e:
         raise HTTPException(
