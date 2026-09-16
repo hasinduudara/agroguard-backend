@@ -151,9 +151,12 @@ async def get_crop_advice(user_query: str, ai_symptoms: str = None, language: st
         combined_context = f"--- Official Database Context ---\n{local_context}\n\n--- Internet Search Context ---\n{web_context}"
         
         lang_instruction = (
-            "5. IMPORTANT: You MUST write the final response entirely in Sinhala language (using Sinhala script, not English)."
+            "6. IMPORTANT: You MUST write the final response entirely in Sinhala language (using Sinhala script, not English).\n"
+            "   - Ensure the output is written in highly natural, grammatically correct conversational Sinhala.\n"
+            "   - Strictly avoid literal word-for-word machine translations.\n"
+            "   - Use authentic Sri Lankan agricultural phrasing and terms familiar to Sri Lankan farmers."
             if language == "si" 
-            else "5. IMPORTANT: You MUST write the final response entirely in English."
+            else "6. IMPORTANT: You MUST write the final response entirely in English."
         )
         
         prompt_template = PromptTemplate(
@@ -178,6 +181,7 @@ async def get_crop_advice(user_query: str, ai_symptoms: str = None, language: st
                - **මූලාශ්‍රය: අන්තර්ජාලය** (If you used the internet search)
             3. VERY IMPORTANT: Sinhala text consumes a huge amount of AI tokens. To prevent the response from cutting off, you MUST keep your answer EXTREMELY SHORT and concise.
             4. Use only 2 to 4 very brief bullet points. DO NOT generate large tables or long paragraphs. 
+            5. SINHALA LANGUAGE REQUIREMENTS: When generating Sinhala responses, output highly natural, grammatically correct conversational Sinhala. Avoid literal machine translations and use authentic Sri Lankan agricultural phrasing and terminology.
             {lang_instruction}
             """
         )
