@@ -4,8 +4,9 @@ from app.services.rag_service import process_and_store_pdf
 # Create a router object for the admin panel endpoints
 router = APIRouter()
 
-@router.post("/upload-guideline", status_code=status.HTTP_201_CREATED)
-async def upload_guideline(file: UploadFile = File(...)):
+# Change the endpoint path to match the React frontend URL
+@router.post("/upload-pdf", status_code=status.HTTP_201_CREATED)
+async def upload_pdf(file: UploadFile = File(...)):
     """
     Admin endpoint to upload agricultural PDF guidelines.
     The PDF is processed, converted to embeddings, and stored in ChromaDB.

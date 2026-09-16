@@ -2,6 +2,7 @@ import os
 import jwt
 from fastapi import FastAPI, Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from fastapi.middleware.cors import CORSMiddleware # Added CORS import
 from dotenv import load_dotenv
 
 # Load environment variables from the .env file
@@ -12,6 +13,15 @@ from app.api.routes_admin import router as admin_router
 
 # Initialize the FastAPI application
 app = FastAPI(title="AgroGuard AI API", version="1.0.0")
+
+# Add CORS middleware to allow the React frontend to communicate with this backend API
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"], # Allows all origins (e.g., http://localhost:5173)
+    allow_credentials=True,
+    allow_methods=["*"], # Allows all HTTP methods (GET, POST, etc.)
+    allow_headers=["*"], # Allows all headers
+)
 
 # Setup HTTP Bearer to extract the token from the Authorization header
 security = HTTPBearer()

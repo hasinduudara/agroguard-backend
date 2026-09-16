@@ -11,6 +11,7 @@ from dotenv import load_dotenv
 from langchain_groq import ChatGroq
 from langchain_core.prompts import PromptTemplate
 from langchain_community.tools import DuckDuckGoSearchRun
+from langchain_community.document_loaders import PyMuPDFLoader
 
 # Load environment variables
 load_dotenv()
@@ -51,7 +52,8 @@ async def process_and_store_pdf(file: UploadFile):
         with open(temp_file_path, "wb") as buffer:
             shutil.copyfileobj(file.file, buffer)
         
-        loader = PyPDFLoader(temp_file_path)
+        # Use the more powerful PyMuPDFLoader to extract text from complex PDFs
+        loader = PyMuPDFLoader(temp_file_path)
         documents = loader.load()
         
         text_splitter = RecursiveCharacterTextSplitter(
@@ -59,6 +61,10 @@ async def process_and_store_pdf(file: UploadFile):
             chunk_overlap=200
         )
         chunks = text_splitter.split_documents(documents)
+        
+        # Check to verify if any text was actually extracted
+        if not chunks:
+            raise ValueError("No text could be extracted. Please ensure this is a text-based PDF and not just scanned images.")
         
         Chroma.from_documents(
             documents=chunks,
@@ -72,6 +78,12 @@ async def process_and_store_pdf(file: UploadFile):
             "chunks_created": len(chunks)
         }
         
+    except ValueError as ve:
+        # Handle our custom validation errors gracefully
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(ve)
+        )
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
