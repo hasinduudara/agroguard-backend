@@ -62,7 +62,7 @@ async def extract_symptoms_from_images(images: List[UploadFile]) -> str:
                     "content": content
                 }
             ],
-            model="qwen/qwen3.6-27b",
+            model="llama-3.2-11b-vision-preview",
             temperature=0.2,
             max_completion_tokens=800 
         )
